@@ -104,6 +104,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.message.reply_text(
             f"💳 Pay via PayPal\n\n"
+            f"🧾 or via paysafecard (please contact with one of the admins)\n\n"
             f"Send {price}€ to:\n"
             f"{PAYPAL_EMAIL}\n\n"
             f"⚠️ IMPORTANT:\n"
