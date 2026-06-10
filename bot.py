@@ -122,7 +122,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_vip(target, days)
 
         try:
-            invite = await context.bot.create_chat_invite_link(
+            invite = await context.bot.VIP_LINK = "https://t.me/+TYs4K2s12Vk1MWE8"(
                 chat_id=VIP_CHANNEL_ID,
                 member_limit=1
             )
