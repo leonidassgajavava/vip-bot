@@ -4,12 +4,13 @@ import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
+# ---------------- CONFIG ----------------
 TOKEN = os.getenv("TOKEN")
 
-VIP_CHANNEL_ID = -6884094503  # ⬅️ ΒΑΛΕ ΤΟ ΣΩΣΤΟ ID ΣΟΥ
+VIP_CHANNEL_ID = -6884094503  # ⬅️ ΒΑΛΕ ΤΟ ΣΩΣΤΟ ID
 PAYPAL_EMAIL = "leonidacc7@gmail.com"
 
-# ---------------- DB ----------------
+# ---------------- DATABASE ----------------
 conn = sqlite3.connect("vip.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 conn.commit()
 
-pending = {}
+pending_payments = {}
 
 # ---------------- PLANS ----------------
 PLANS = {
@@ -39,7 +40,7 @@ def set_vip(user_id, days):
     )
     conn.commit()
 
-def get_expiry(user_id):
+def get_vip(user_id):
     cursor.execute("SELECT expires_at FROM users WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
     if not row:
@@ -62,7 +63,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------- MY PLAN ----------------
 async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    exp = get_expiry(user_id)
+    exp = get_vip(user_id)
 
     if not exp:
         await update.message.reply_text("❌ You are not VIP.")
@@ -71,60 +72,17 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     remaining = exp - datetime.datetime.now()
 
     await update.message.reply_text(
-        f"💎 VIP ACTIVE\n\nExpires: {exp.strftime('%Y-%m-%d')}\nDays left: {remaining.days}"
+        f"💎 VIP STATUS\n\n"
+        f"Expires: {exp.strftime('%Y-%m-%d')}\n"
+        f"Days left: {remaining.days}"
     )
 
-# ---------------- BUTTONS ----------------
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-
-    # ---------------- PLAN SELECT ----------------
-    if query.data in PLANS:
-        price, days = PLANS[query.data]
-        pending[user_id] = days
-
-        await query.message.reply_text(
-            f"💳 Pay via PayPal:\n\n"
-            f"{price}€ → {PAYPAL_EMAIL}\n\n"
-            f"⚠️ IMPORTANT:\n"
-            f'Write in payment note: "BetHunetrs VIP"\n\n'
-            f"After payment type /paid"
-        )
-
-    # ---------------- APPROVE PAYMENT ----------------
-    elif query.data.startswith("approve_"):
-        target = int(query.data.split("_")[1])
-        days = pending.get(target, 30)
-
-        set_vip(target, days)
-
-        try:
-            invite = await context.bot.create_chat_invite_link(
-                chat_id=VIP_CHANNEL_ID,
-                member_limit=1
-            )
-
-            await context.bot.send_message(
-                chat_id=target,
-                text=f"🎉 VIP Activated!\n\nHere is your access link:\n{invite.invite_link}"
-            )
-        except Exception as e:
-            await context.bot.send_message(
-                chat_id=target,
-                text="VIP activated but link failed. Contact admin."
-            )
-
-        await query.message.reply_text("✅ Approved")
-
-# ---------------- PAID ----------------
+# ---------------- PAYED ----------------
 async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
-    if user_id not in pending:
-        await update.message.reply_text("❌ No pending payment.")
+    if user_id not in pending_payments:
+        await update.message.reply_text("❌ No pending payment found.")
         return
 
     keyboard = [
@@ -136,12 +94,58 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ---------------- BUTTONS ----------------
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    # PLAN SELECT
+    if query.data in PLANS:
+        price, days = PLANS[query.data]
+        pending_payments[user_id] = days
+
+        await query.message.reply_text(
+            f"💳 Pay via PayPal:\n\n"
+            f"Send {price}€ to: {PAYPAL_EMAIL}\n\n"
+            f"⚠️ IMPORTANT:\n"
+            f'Write in payment note exactly: "BetHunetrs VIP"\n\n'
+            f"After payment send /paid"
+        )
+
+    # APPROVE USER
+    elif query.data.startswith("approve_"):
+        target = int(query.data.split("_")[1])
+        days = pending_payments.get(target, 30)
+
+        set_vip(target, days)
+
+        try:
+            invite = await context.bot.create_chat_invite_link(
+                chat_id=VIP_CHANNEL_ID,
+                member_limit=1
+            )
+
+            await context.bot.send_message(
+                chat_id=target,
+                text=f"🎉 VIP ACTIVATED!\n\nYour private access link:\n{invite.invite_link}"
+            )
+
+        except Exception:
+            await context.bot.send_message(
+                chat_id=target,
+                text="VIP activated but invite link failed. Contact admin."
+            )
+
+        await query.message.reply_text("✅ Approved")
+
 # ---------------- APP ----------------
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("paid", paid))
 app.add_handler(CommandHandler("myplan", myplan))
+app.add_handler(CommandHandler("paid", paid))
 app.add_handler(CallbackQueryHandler(button))
 
 app.run_polling()
