@@ -131,7 +131,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id=target,
     text=f"🎉 VIP ACTIVATED!\n\nJoin here:\n{VIP_LINK}"
 )
-            )
+        
 
         except Exception:
             await context.bot.send_message(
