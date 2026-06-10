@@ -4,11 +4,14 @@ import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
+# ---------------- CONFIG ----------------
 TOKEN = os.getenv("TOKEN")
 
-VIP_CHANNEL_LINK = "https://t.me/+hfF2DPLqTgRmMzQ0"  # ⬅️ βάλε manual invite link
+VIP_CHANNEL_ID = -1003951903278  # ⬅️ βάλε το σωστό channel id
+PAYPAL_EMAIL = "leonidacc7@gmail.com"
+ADMIN_ID = 6884094503  # ⬅️ βάλε το Telegram ID σου
 
-# ---------------- DB ----------------
+# ---------------- DATABASE ----------------
 conn = sqlite3.connect("vip.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -42,7 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ---------------- PLAN HANDLER ----------------
+# ---------------- BUTTONS ----------------
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -55,12 +58,43 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.message.reply_text(
             f"💳 Pay via PayPal:\n\n"
-            f"{price}€ to your PayPal email\n\n"
-            f"⚠️ IMPORTANT: write 'BetHunetrs VIP' in note\n\n"
-            f"After payment type /paid"
+            f"{price}€ → {PAYPAL_EMAIL}\n\n"
+            f"⚠️ Write in note: BetHunetrs VIP\n\n"
+            f"After payment send /paid"
         )
 
-# ---------------- PAID CONFIRM ----------------
+    elif query.data.startswith("approve_"):
+        target = int(query.data.split("_")[1])
+        days = pending.get(target, 30)
+
+        expire = datetime.datetime.now() + datetime.timedelta(days=days)
+
+        cursor.execute(
+            "INSERT OR REPLACE INTO users (user_id, expires_at) VALUES (?, ?)",
+            (target, expire.isoformat())
+        )
+        conn.commit()
+
+        try:
+            invite = await context.bot.create_chat_invite_link(
+                chat_id=VIP_CHANNEL_ID,
+                member_limit=1
+            )
+
+            await context.bot.send_message(
+                chat_id=target,
+                text=f"🎉 VIP ACTIVATED!\n\nHere is your access link:\n{invite.invite_link}"
+            )
+
+        except Exception:
+            await context.bot.send_message(
+                chat_id=target,
+                text="VIP activated but invite link failed."
+            )
+
+        await query.message.reply_text("✅ Approved")
+
+# ---------------- PAID ----------------
 async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
@@ -68,10 +102,15 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No pending payment.")
         return
 
-    await update.message.reply_text(
-        "🎉 Payment received!\n\n"
-        f"👉 Join VIP here:\n{VIP_CHANNEL_LINK}"
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"💰 PAYMENT REQUEST\nUser ID: {user_id}",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ APPROVE", callback_data=f"approve_{user_id}")]
+        ])
     )
+
+    await update.message.reply_text("⏳ Waiting for admin approval...")
 
 # ---------------- APP ----------------
 app = ApplicationBuilder().token(TOKEN).build()
