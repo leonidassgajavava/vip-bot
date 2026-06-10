@@ -6,7 +6,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 
 TOKEN = os.getenv("TOKEN")
 
-VIP_CHANNEL_ID = -1001234567890  # ⬅️ ΒΑΛΕ ΤΟ ΣΩΣΤΟ ID ΣΟΥ
+VIP_CHANNEL_ID = -6884094503  # ⬅️ ΒΑΛΕ ΤΟ ΣΩΣΤΟ ID ΣΟΥ
 PAYPAL_EMAIL = "leonidacc7@gmail.com"
 
 # ---------------- DB ----------------
