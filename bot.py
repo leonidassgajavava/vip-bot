@@ -186,12 +186,71 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Please wait for approval."
     )
 
+async def vipusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    cursor.execute(
+        "SELECT user_id, expires_at FROM users"
+    )
+
+    rows = cursor.fetchall()
+
+    if not rows:
+        await update.message.reply_text("No VIP users.")
+        return
+
+    text = "💎 VIP USERS\n\n"
+
+    for user_id, expires_at in rows:
+        text += f"{user_id} → {expires_at}\n"
+
+    await update.message.reply_text(text)
+
+
+async def expired(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    now = datetime.datetime.now()
+
+    cursor.execute(
+        "SELECT user_id, expires_at FROM users"
+    )
+
+    rows = cursor.fetchall()
+
+    expired_users = []
+
+    for user_id, expires_at in rows:
+
+        expiry = datetime.datetime.fromisoformat(expires_at)
+
+        if expiry <= now:
+            expired_users.append(str(user_id))
+
+    if not expired_users:
+        await update.message.reply_text(
+            "✅ No expired subscriptions."
+        )
+        return
+
+    await update.message.reply_text(
+        "❌ Expired Users:\n\n" +
+        "\n".join(expired_users)
+    )
+
+
 # ---------------- APP ----------------
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("paid", paid))
 app.add_handler(CommandHandler("myplan", myplan))
+app.add_handler(CommandHandler("vipusers", vipusers))
+app.add_handler(CommandHandler("expired", expired))
 app.add_handler(CallbackQueryHandler(button))
 
 print("Bot started...")
