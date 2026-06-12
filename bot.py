@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import datetime
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -46,6 +47,38 @@ PLANS = {
     "vip_3m": (25, 90),
     "vip_6m": (50, 180)
 }
+
+# ---------------- AUTO REMOVE ----------------
+async def auto_remove_expired(app):
+    while True:
+        try:
+            now = datetime.datetime.now()
+
+            cursor.execute("SELECT user_id, expires_at FROM users")
+            rows = cursor.fetchall()
+
+            for user_id, expires_at in rows:
+                expiry = datetime.datetime.fromisoformat(expires_at)
+
+                if expiry <= now:
+                    cursor.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+                    conn.commit()
+
+                    try:
+                        await app.bot.send_message(
+                            chat_id=user_id,
+                            text="❌ Your VIP subscription has expired."
+                        )
+                    except:
+                        pass
+
+        except Exception as e:
+            print("Auto remove error:", e)
+
+        await asyncio.sleep(60)
+
+async def post_init(app):
+    app.create_task(auto_remove_expired(app))
 
 # ---------------- START ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,6 +141,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.message.reply_text(
             f"💳 Pay via PayPal\n\n"
+            f"🧾 or via paysafecard (please contact with one of the admins)\n\n"
             f"Send {price}€ to:\n{PAYPAL_EMAIL}\n\n"
             f"⚠️ Put your Telegram ID in note\n\n"
             f"After payment send /paid"
@@ -216,7 +250,7 @@ async def expired(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ---------------- APP ----------------
-app = ApplicationBuilder().token(TOKEN).build()
+app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("paid", paid))
