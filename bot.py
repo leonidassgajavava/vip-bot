@@ -16,6 +16,9 @@ VIP_CHANNEL_ID = -1003951903278
 PAYPAL_EMAIL = "leonidacc7@gmail.com"
 ADMIN_ID = 6884094503
 
+if not TOKEN:
+    raise Exception("TOKEN is missing! Set it in Railway environment variables.")
+
 # ---------------- DATABASE ----------------
 conn = sqlite3.connect("vip.db", check_same_thread=False)
 cursor = conn.cursor()
@@ -26,9 +29,15 @@ CREATE TABLE IF NOT EXISTS users (
     expires_at TEXT
 )
 """)
-conn.commit()
 
-pending = {}
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS pending (
+    user_id INTEGER PRIMARY KEY,
+    days INTEGER
+)
+""")
+
+conn.commit()
 
 # ---------------- PLANS ----------------
 PLANS = {
@@ -49,7 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "🔥 BETHUNETRS VIP\n\nChoose your subscription:",
+        "🔥 VIP SYSTEM\n\nChoose your subscription:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -58,27 +67,18 @@ async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    cursor.execute(
-        "SELECT expires_at FROM users WHERE user_id=?",
-        (user_id,)
-    )
-
+    cursor.execute("SELECT expires_at FROM users WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
 
     if not row:
-        await update.message.reply_text(
-            "❌ You don't have an active VIP subscription."
-        )
+        await update.message.reply_text("❌ No active VIP subscription.")
         return
 
     expiry = datetime.datetime.fromisoformat(row[0])
-
     remaining = expiry - datetime.datetime.now()
 
     if remaining.total_seconds() <= 0:
-        await update.message.reply_text(
-            "❌ Your VIP subscription has expired."
-        )
+        await update.message.reply_text("❌ Your VIP subscription has expired.")
         return
 
     await update.message.reply_text(
@@ -100,25 +100,31 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         price, days = PLANS[query.data]
 
-        pending[user_id] = days
+        cursor.execute(
+            "INSERT OR REPLACE INTO pending (user_id, days) VALUES (?, ?)",
+            (user_id, days)
+        )
+        conn.commit()
 
         await query.message.reply_text(
             f"💳 Pay via PayPal\n\n"
-            f"🧾 or via paysafecard (please contact with one of the admins)\n\n"
-            f"Send {price}€ to:\n"
-            f"{PAYPAL_EMAIL}\n\n"
-            f"⚠️ IMPORTANT:\n"
-            f"Write your Telegram User ID in the payment note.\n\n"
-            f"After payment send:\n"
-            f"/paid"
+            f"Send {price}€ to:\n{PAYPAL_EMAIL}\n\n"
+            f"⚠️ Put your Telegram ID in note\n\n"
+            f"After payment send /paid"
         )
 
-    # APPROVE USER
+    # APPROVE USER (ADMIN)
     elif query.data.startswith("approve_"):
+
+        if user_id != ADMIN_ID:
+            return
 
         target = int(query.data.split("_")[1])
 
-        days = pending.get(target, 30)
+        cursor.execute("SELECT days FROM pending WHERE user_id=?", (target,))
+        row = cursor.fetchone()
+
+        days = row[0] if row else 30
 
         expire = datetime.datetime.now() + datetime.timedelta(days=days)
 
@@ -127,10 +133,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             (target, expire.isoformat())
         )
 
+        cursor.execute("DELETE FROM pending WHERE user_id=?", (target,))
         conn.commit()
 
         try:
-
             invite = await context.bot.create_chat_invite_link(
                 chat_id=VIP_CHANNEL_ID,
                 member_limit=1
@@ -138,18 +144,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await context.bot.send_message(
                 chat_id=target,
-                text=(
-                    "🎉 VIP ACTIVATED!\n\n"
-                    f"Join here:\n{invite.invite_link}\n\n"
-                    f"Use /myplan anytime to check your subscription."
-                )
+                text=f"🎉 VIP ACTIVATED!\n\nJoin here:\n{invite.invite_link}"
             )
 
         except Exception as e:
-
             await context.bot.send_message(
                 chat_id=target,
-                text=f"❌ Invite link failed.\n\nError:\n{e}"
+                text=f"❌ Error creating invite:\n{e}"
             )
 
         await query.message.reply_text("✅ User approved")
@@ -159,57 +160,40 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.message.from_user.id
 
-    if user_id not in pending:
+    cursor.execute("SELECT days FROM pending WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
 
-        await update.message.reply_text(
-            "❌ No pending payment found."
-        )
+    if not row:
+        await update.message.reply_text("❌ No pending payment found.")
         return
 
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=(
-            f"💰 NEW PAYMENT REQUEST\n\n"
-            f"User ID: {user_id}"
-        ),
+        text=f"💰 PAYMENT REQUEST\n\nUser ID: {user_id}",
         reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "✅ APPROVE",
-                    callback_data=f"approve_{user_id}"
-                )
-            ]
+            [InlineKeyboardButton("✅ APPROVE", callback_data=f"approve_{user_id}")]
         ])
     )
 
-    await update.message.reply_text(
-        "⏳ Payment request sent to admin.\n\n"
-        "Please wait for approval."
-    )
+    await update.message.reply_text("⏳ Sent to admin.")
 
+# ---------------- ADMIN: VIP USERS ----------------
 async def vipusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_user.id != ADMIN_ID:
         return
 
-    cursor.execute(
-        "SELECT user_id, expires_at FROM users"
-    )
-
+    cursor.execute("SELECT user_id, expires_at FROM users")
     rows = cursor.fetchall()
-
-    if not rows:
-        await update.message.reply_text("No VIP users.")
-        return
 
     text = "💎 VIP USERS\n\n"
 
     for user_id, expires_at in rows:
         text += f"{user_id} → {expires_at}\n"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text or "No users.")
 
-
+# ---------------- ADMIN: EXPIRED ----------------
 async def expired(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_user.id != ADMIN_ID:
@@ -217,32 +201,19 @@ async def expired(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = datetime.datetime.now()
 
-    cursor.execute(
-        "SELECT user_id, expires_at FROM users"
-    )
-
+    cursor.execute("SELECT user_id, expires_at FROM users")
     rows = cursor.fetchall()
 
     expired_users = []
 
     for user_id, expires_at in rows:
-
-        expiry = datetime.datetime.fromisoformat(expires_at)
-
-        if expiry <= now:
+        if datetime.datetime.fromisoformat(expires_at) <= now:
             expired_users.append(str(user_id))
 
-    if not expired_users:
-        await update.message.reply_text(
-            "✅ No expired subscriptions."
-        )
-        return
-
     await update.message.reply_text(
-        "❌ Expired Users:\n\n" +
-        "\n".join(expired_users)
+        "❌ Expired Users:\n\n" + "\n".join(expired_users)
+        if expired_users else "✅ No expired users."
     )
-
 
 # ---------------- APP ----------------
 app = ApplicationBuilder().token(TOKEN).build()
@@ -255,5 +226,4 @@ app.add_handler(CommandHandler("expired", expired))
 app.add_handler(CallbackQueryHandler(button))
 
 print("Bot started...")
-
 app.run_polling()
