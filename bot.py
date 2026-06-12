@@ -18,7 +18,7 @@ PAYPAL_EMAIL = "leonidacc7@gmail.com"
 ADMIN_ID = 6884094503
 
 if not TOKEN:
-    raise Exception("TOKEN is missing! Set it in Railway environment variables.")
+    raise Exception("TOKEN is missing!")
 
 # ---------------- DATABASE ----------------
 conn = sqlite3.connect("vip.db", check_same_thread=False)
@@ -47,38 +47,6 @@ PLANS = {
     "vip_3m": (25, 90),
     "vip_6m": (50, 180)
 }
-
-# ---------------- AUTO REMOVE ----------------
-async def auto_remove_expired(app):
-    while True:
-        try:
-            now = datetime.datetime.now()
-
-            cursor.execute("SELECT user_id, expires_at FROM users")
-            rows = cursor.fetchall()
-
-            for user_id, expires_at in rows:
-                expiry = datetime.datetime.fromisoformat(expires_at)
-
-                if expiry <= now:
-                    cursor.execute("DELETE FROM users WHERE user_id=?", (user_id,))
-                    conn.commit()
-
-                    try:
-                        await app.bot.send_message(
-                            chat_id=user_id,
-                            text="❌ Your VIP subscription has expired."
-                        )
-                    except:
-                        pass
-
-        except Exception as e:
-            print("Auto remove error:", e)
-
-        await asyncio.sleep(60)
-
-async def post_init(app):
-    app.create_task(auto_remove_expired(app))
 
 # ---------------- START ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -184,7 +152,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await context.bot.send_message(
                 chat_id=target,
-                text=f"❌ Error creating invite:\n{e}"
+                text=f"❌ Invite error:\n{e}"
             )
 
         await query.message.reply_text("✅ User approved")
@@ -211,7 +179,93 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ Sent to admin.")
 
-# ---------------- ADMIN: VIP USERS ----------------
+    # send renew button too (if already VIP)
+    cursor.execute("SELECT expires_at FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
+
+    if row:
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔁 Renew Now", callback_data="renew")]
+        ])
+
+        await update.message.reply_text(
+            "💡 Want to extend your VIP?",
+            reply_markup=keyboard
+        )
+
+# ---------------- RENEW BUTTON ----------------
+async def renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    await query.message.reply_text(
+        f"💳 Renew your VIP\n\nSend payment to:\n{PAYPAL_EMAIL}\n\nThen send /paid"
+    )
+
+# ---------------- AUTO VIP MANAGER ----------------
+async def vip_manager(app):
+
+    while True:
+        try:
+            now = datetime.datetime.now()
+
+            cursor.execute("SELECT user_id, expires_at FROM users")
+            rows = cursor.fetchall()
+
+            for user_id, expires_at in rows:
+
+                expiry = datetime.datetime.fromisoformat(expires_at)
+                days_left = (expiry - now).days
+
+                # ---------------- 3 DAY REMINDER ----------------
+                if days_left == 3:
+                    try:
+                        await app.bot.send_message(
+                            chat_id=user_id,
+                            text="⚠️ Your VIP expires in 3 days. Renew now to keep access!"
+                        )
+                    except:
+                        pass
+
+                # ---------------- EXPIRED → KICK ----------------
+                if expiry <= now:
+                    try:
+                        await app.bot.ban_chat_member(
+                            chat_id=VIP_CHANNEL_ID,
+                            user_id=user_id
+                        )
+
+                        await app.bot.unban_chat_member(
+                            chat_id=VIP_CHANNEL_ID,
+                            user_id=user_id
+                        )
+
+                        keyboard = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔁 Renew Now", callback_data="renew")]
+                        ])
+
+                        await app.bot.send_message(
+                            chat_id=user_id,
+                            text="❌ Your VIP expired. You were removed from the channel.",
+                            reply_markup=keyboard
+                        )
+
+                    except Exception as e:
+                        print("Kick error:", e)
+
+                    cursor.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+                    conn.commit()
+
+        except Exception as e:
+            print("VIP manager error:", e)
+
+        await asyncio.sleep(3600)
+
+async def post_init(app):
+    app.create_task(vip_manager(app))
+
+# ---------------- ADMIN ----------------
 async def vipusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_user.id != ADMIN_ID:
@@ -227,28 +281,6 @@ async def vipusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text or "No users.")
 
-# ---------------- ADMIN: EXPIRED ----------------
-async def expired(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    now = datetime.datetime.now()
-
-    cursor.execute("SELECT user_id, expires_at FROM users")
-    rows = cursor.fetchall()
-
-    expired_users = []
-
-    for user_id, expires_at in rows:
-        if datetime.datetime.fromisoformat(expires_at) <= now:
-            expired_users.append(str(user_id))
-
-    await update.message.reply_text(
-        "❌ Expired Users:\n\n" + "\n".join(expired_users)
-        if expired_users else "✅ No expired users."
-    )
-
 # ---------------- APP ----------------
 app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
@@ -256,8 +288,8 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("paid", paid))
 app.add_handler(CommandHandler("myplan", myplan))
 app.add_handler(CommandHandler("vipusers", vipusers))
-app.add_handler(CommandHandler("expired", expired))
 app.add_handler(CallbackQueryHandler(button))
+app.add_handler(CallbackQueryHandler(renew, pattern="renew"))
 
 print("Bot started...")
 app.run_polling()
