@@ -160,7 +160,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------- PAID ----------------
 async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user_id = update.message.from_user.id
+    user = update.effective_user
+
+    user_id = user.id
+    username = user.username
+    first_name = user.first_name
 
     cursor.execute("SELECT days FROM pending WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
@@ -171,7 +175,12 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"💰 PAYMENT REQUEST\n\nUser ID: {user_id}",
+        text=(
+            f"💰 PAYMENT REQUEST\n\n"
+            f"👤 Name: {first_name}\n"
+            f"🆔 User ID: {user_id}\n"
+            f"📛 Username: @{username if username else 'No username'}"
+        ),
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ APPROVE", callback_data=f"approve_{user_id}")]
         ])
@@ -179,7 +188,6 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ Sent to admin.")
 
-    # send renew button too (if already VIP)
     cursor.execute("SELECT expires_at FROM users WHERE user_id=?", (user_id,))
     row = cursor.fetchone()
 
