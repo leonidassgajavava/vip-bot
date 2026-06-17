@@ -1,4 +1,19 @@
-import os
+
+    user_id = query.from_user.id
+
+    # BUY PLAN
+    if query.data in PLANS:
+
+        price, days = PLANS[query.data]
+
+        cursor.execute(
+            "INSERT OR REPLACE INTO pending (user_id, days) VALUES (?, ?)",
+            (user_id, days)
+        )
+        conn.commit()
+
+        await query.message.reply_text(
+            f"💳 Pay via PayPal\n\n"import os
 import sqlite3
 import datetime
 import asyncio
@@ -94,21 +109,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    user_id = query.from_user.id
-
-    # BUY PLAN
-    if query.data in PLANS:
-
-        price, days = PLANS[query.data]
-
-        cursor.execute(
-            "INSERT OR REPLACE INTO pending (user_id, days) VALUES (?, ?)",
-            (user_id, days)
-        )
-        conn.commit()
-
-        await query.message.reply_text(
-            f"💳 Pay via PayPal\n\n"
             f"🧾 or via paysafecard (please contact with one of the admins)\n\n"
             f"Send {price}€ to:\n{PAYPAL_EMAIL}\n\n"
             f"⚠️ Put your Telegram ID in note\n\n"
@@ -188,18 +188,7 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ Sent to admin.")
 
-    cursor.execute("SELECT expires_at FROM users WHERE user_id=?", (user_id,))
-    row = cursor.fetchone()
-
-    if row:
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔁 Renew Now", callback_data="renew")]
-        ])
-
-        await update.message.reply_text(
-            "💡 Want to extend your VIP?",
-            reply_markup=keyboard
-        )
+    
 
 # ---------------- RENEW BUTTON ----------------
 async def renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,8 +196,16 @@ async def renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    keyboard = [
+        [InlineKeyboardButton("🧪 Trial 15 Days - 5€", callback_data="vip_trial")],
+        [InlineKeyboardButton("💎 1 Month - 10€", callback_data="vip_1m")],
+        [InlineKeyboardButton("🔥 3 Months - 25€", callback_data="vip_3m")],
+        [InlineKeyboardButton("👑 6 Months - 50€", callback_data="vip_6m")]
+    ]
+
     await query.message.reply_text(
-        f"💳 Renew your VIP\n\nSend payment to:\n{PAYPAL_EMAIL}\n\nThen send /paid"
+        "Choose your subscription:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 # ---------------- AUTO VIP MANAGER ----------------
@@ -229,10 +226,17 @@ async def vip_manager(app):
                 # ---------------- 3 DAY REMINDER ----------------
                 if days_left == 3:
                     try:
+
+                        keyboard = InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔁 Renew Now", callback_data="renew")]
+                        ])
+
                         await app.bot.send_message(
                             chat_id=user_id,
-                            text="⚠️ Your VIP expires in 3 days. Renew now to keep access!"
+                            text="⚠️ Your VIP expires in 3 days.\n\nRenew now to keep access!",
+                            reply_markup=keyboard
                         )
+
                     except:
                         pass
 
