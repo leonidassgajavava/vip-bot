@@ -17,7 +17,7 @@ VIP_CHANNEL_ID = -1003951903278
 PAYPAL_EMAIL = "leonidacc7@gmail.com"
 ADMIN_ID = 6884094503
 
-DISCORD_LINK = "https://discord.gg/yourinvite"
+DISCORD_LINK = "https://discord.gg/cmdFR6suZ"
 
 if not TOKEN:
     raise Exception("TOKEN is missing!")
