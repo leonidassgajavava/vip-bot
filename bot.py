@@ -1,19 +1,4 @@
-
-    user_id = query.from_user.id
-
-    # BUY PLAN
-    if query.data in PLANS:
-
-        price, days = PLANS[query.data]
-
-        cursor.execute(
-            "INSERT OR REPLACE INTO pending (user_id, days) VALUES (?, ?)",
-            (user_id, days)
-        )
-        conn.commit()
-
-        await query.message.reply_text(
-            f"💳 Pay via PayPal\n\n"import os
+import os
 import sqlite3
 import datetime
 import asyncio
@@ -31,6 +16,8 @@ TOKEN = os.getenv("TOKEN")
 VIP_CHANNEL_ID = -1003951903278
 PAYPAL_EMAIL = "leonidacc7@gmail.com"
 ADMIN_ID = 6884094503
+
+DISCORD_LINK = "https://discord.gg/yourinvite"
 
 if not TOKEN:
     raise Exception("TOKEN is missing!")
@@ -78,6 +65,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ---------------- DISCORD COMMAND ----------------
+async def discordserver(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        f"🎮 Join our Discord server:\n{DISCORD_LINK}"
+    )
+
 # ---------------- MY PLAN ----------------
 async def myplan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -109,13 +102,26 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    user_id = query.from_user.id
+
+    if query.data in PLANS:
+
+        price, days = PLANS[query.data]
+
+        cursor.execute(
+            "INSERT OR REPLACE INTO pending (user_id, days) VALUES (?, ?)",
+            (user_id, days)
+        )
+        conn.commit()
+
+        await query.message.reply_text(
+            f"💳 Pay via PayPal\n\n"
             f"🧾 or via paysafecard (please contact with one of the admins)\n\n"
             f"Send {price}€ to:\n{PAYPAL_EMAIL}\n\n"
             f"⚠️ Put your Telegram ID in note\n\n"
             f"After payment send /paid"
         )
 
-    # APPROVE USER (ADMIN)
     elif query.data.startswith("approve_"):
 
         if user_id != ADMIN_ID:
@@ -188,9 +194,7 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ Sent to admin.")
 
-    
-
-# ---------------- RENEW BUTTON ----------------
+# ---------------- RENEW ----------------
 async def renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -208,7 +212,7 @@ async def renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ---------------- AUTO VIP MANAGER ----------------
+# ---------------- VIP MANAGER ----------------
 async def vip_manager(app):
 
     while True:
@@ -223,24 +227,20 @@ async def vip_manager(app):
                 expiry = datetime.datetime.fromisoformat(expires_at)
                 days_left = (expiry - now).days
 
-                # ---------------- 3 DAY REMINDER ----------------
                 if days_left == 3:
                     try:
-
                         keyboard = InlineKeyboardMarkup([
                             [InlineKeyboardButton("🔁 Renew Now", callback_data="renew")]
                         ])
 
                         await app.bot.send_message(
                             chat_id=user_id,
-                            text="⚠️ Your VIP expires in 3 days.\n\nRenew now to keep access!",
+                            text="⚠️ Your VIP expires in 3 days.\n\nRenew now!",
                             reply_markup=keyboard
                         )
-
                     except:
                         pass
 
-                # ---------------- EXPIRED → KICK ----------------
                 if expiry <= now:
                     try:
                         await app.bot.ban_chat_member(
@@ -253,14 +253,12 @@ async def vip_manager(app):
                             user_id=user_id
                         )
 
-                        keyboard = InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🔁 Renew Now", callback_data="renew")]
-                        ])
-
                         await app.bot.send_message(
                             chat_id=user_id,
-                            text="❌ Your VIP expired. You were removed from the channel.",
-                            reply_markup=keyboard
+                            text="❌ Your VIP expired. You were removed.",
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("🔁 Renew Now", callback_data="renew")]
+                            ])
                         )
 
                     except Exception as e:
@@ -297,9 +295,11 @@ async def vipusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("paid", paid))
 app.add_handler(CommandHandler("myplan", myplan))
+app.add_handler(CommandHandler("paid", paid))
 app.add_handler(CommandHandler("vipusers", vipusers))
+app.add_handler(CommandHandler("discordserver", discordserver))
+
 app.add_handler(CallbackQueryHandler(button))
 app.add_handler(CallbackQueryHandler(renew, pattern="renew"))
 
