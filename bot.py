@@ -196,7 +196,6 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- RENEW ----------------
 async def renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     query = update.callback_query
     await query.answer()
 
@@ -208,7 +207,23 @@ async def renew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await query.message.reply_text(
-        "Choose your subscription:",
+        "💎 Choose your subscription:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# 👇 ΕΔΩ ΜΠΑΙΝΕΙ ΤΟ ΒΗΜΑ 3
+async def renew_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    keyboard = [
+        [InlineKeyboardButton("🧪 Trial 15 Days - 5€", callback_data="vip_trial")],
+        [InlineKeyboardButton("💎 1 Month - 10€", callback_data="vip_1m")],
+        [InlineKeyboardButton("🔥 3 Months - 25€", callback_data="vip_3m")],
+        [InlineKeyboardButton("👑 6 Months - 50€", callback_data="vip_6m")]
+    ]
+
+    await update.message.reply_text(
+        "💎 Choose your membership:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -299,6 +314,7 @@ app.add_handler(CommandHandler("myplan", myplan))
 app.add_handler(CommandHandler("paid", paid))
 app.add_handler(CommandHandler("vipusers", vipusers))
 app.add_handler(CommandHandler("discordserver", discordserver))
+app.add_handler(CommandHandler("renew", renew_command))
 
 app.add_handler(CallbackQueryHandler(button))
 app.add_handler(CallbackQueryHandler(renew, pattern="renew"))
