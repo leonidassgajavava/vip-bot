@@ -104,6 +104,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = query.from_user.id
 
+    # ---------------- PLANS ----------------
     if query.data in PLANS:
 
         price, days = PLANS[query.data]
@@ -122,6 +123,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"After payment send /paid"
         )
 
+    # ---------------- APPROVE ----------------
     elif query.data.startswith("approve_"):
 
         if user_id != ADMIN_ID:
@@ -134,7 +136,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         days = row[0] if row else 30
 
-        expire = datetime.datetime.now() + datetime.timedelta(days=days)
+        current_expiry = cursor.execute(
+            "SELECT expires_at FROM users WHERE user_id=?",
+            (target,)
+        ).fetchone()
+
+        if current_expiry:
+            existing = datetime.datetime.fromisoformat(current_expiry[0])
+
+            if existing > datetime.datetime.now():
+                expire = existing + datetime.timedelta(days=days)
+            else:
+                expire = datetime.datetime.now() + datetime.timedelta(days=days)
+        else:
+            expire = datetime.datetime.now() + datetime.timedelta(days=days)
 
         cursor.execute(
             "INSERT OR REPLACE INTO users (user_id, expires_at) VALUES (?, ?)",
